@@ -89,24 +89,30 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/users',verifyToken,verifyAdmin,async(req,res)=>{
+    app.get('/users',verifyToken,async(req,res)=>{
       const result=await userCollection.find({role:'worker'}).toArray()
       res.send(result)
     })
 
 
-    app.get('/users/admin/:email',verifyToken,verifyAdmin,async(req,res)=>{
+    app.get('/users/:email',verifyToken,async(req,res)=>{
       const email =req.params.email;
       if(email !== req.decoded.email){
         return res.status(403).send({message:'unauthorized access'})
       }
       const quary={email:email}
       const user =await userCollection.findOne(quary);
-      let admin=false
+      let admin=false;
+      let taskcreator=false;
+      let worker=false
+
       if(user){
-          admin=user?.role === 'admin'
+          admin=user?.role === 'admin',
+          taskcreator=user?.role === 'taskcreator',
+          worker=user?.role === 'worker'
+
       }
-      res.send({admin})
+      res.send({admin,taskcreator,worker})
     })
 
 
