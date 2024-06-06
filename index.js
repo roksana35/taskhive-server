@@ -93,6 +93,13 @@ async function run() {
       const result=await userCollection.find({role:'worker'}).toArray()
       res.send(result)
     })
+    app.get('/usersinfo/:email',verifyToken,async(req,res)=>{
+      const quary=req.params.email;
+      const filter={email:quary}
+      const result=await userCollection.findOne(filter)
+      res.send(result)
+    })
+   
 
 
     app.get('/users/:email',verifyToken,async(req,res)=>{
