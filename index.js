@@ -26,6 +26,7 @@ const client = new MongoClient(uri, {
 });
 
 const userCollection = client.db("taskhiveDB").collection("users");
+const taskCollection = client.db("taskhiveDB").collection("tasks");
 
 async function run() {
   try {
@@ -120,6 +121,17 @@ async function run() {
 
       }
       res.send({admin,taskcreator,worker})
+    })
+
+    app.get('/tasks',async(req,res)=>{
+      const result=await taskCollection.find().toArray()
+      res.send(result)
+    })
+
+    app.post('/tasks',async(req,res)=>{
+      const quary=req.body;
+      const result=await taskCollection.insertOne(quary);
+      res.send(result)
     })
 
 
