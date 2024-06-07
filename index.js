@@ -27,6 +27,7 @@ const client = new MongoClient(uri, {
 
 const userCollection = client.db("taskhiveDB").collection("users");
 const taskCollection = client.db("taskhiveDB").collection("tasks");
+const submissionCollection = client.db("taskhiveDB").collection("submission");
 
 async function run() {
   try {
@@ -127,11 +128,27 @@ async function run() {
       const result=await taskCollection.find().toArray()
       res.send(result)
     })
+    app.get('/tasks/:id',async(req,res)=>{
+      const id=req.params.id;
+      const quary={_id:new ObjectId(id)}
+      const result=await taskCollection.findOne(quary)
+      res.send(result)
+    })
+    app.get('/submission',async(req,res)=>{
+      const result=await submissionCollection.find().toArray();
+      res.send(result)
+    })
 
     app.post('/tasks',async(req,res)=>{
       const quary=req.body;
       const result=await taskCollection.insertOne(quary);
       res.send(result)
+    })
+    app.post('/submission',async(req,res)=>{
+      const query=req.body;
+      const result=await submissionCollection.insertOne(query);
+      res.send(result)
+
     })
 
 
