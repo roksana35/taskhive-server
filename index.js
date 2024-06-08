@@ -28,6 +28,7 @@ const client = new MongoClient(uri, {
 const userCollection = client.db("taskhiveDB").collection("users");
 const taskCollection = client.db("taskhiveDB").collection("tasks");
 const submissionCollection = client.db("taskhiveDB").collection("submission");
+const withdrawCollection = client.db("taskhiveDB").collection("withdrawals");
 
 async function run() {
   try {
@@ -95,6 +96,7 @@ async function run() {
       const result=await userCollection.find({role:'worker'}).toArray()
       res.send(result)
     })
+    
     app.get('/usersinfo/:email',verifyToken,async(req,res)=>{
       const quary=req.params.email;
       const filter={email:quary}
@@ -123,6 +125,44 @@ async function run() {
       }
       res.send({admin,taskcreator,worker})
     })
+  // submission approved
+    app.patch('/submission/approve/:id', verifyToken, async (req, res) => {
+      const { id } = req.params;
+      const { worker_email, payable_amount } = req.body;
+    
+      const submissionFilter = { _id: new ObjectId(id) };
+      const updateSubmission = {
+        $set: {
+          status: 'approved',
+        },
+      };
+    
+      const userFilter = { email: worker_email };
+      const updateUser = {
+        $inc: {
+          coin: payable_amount,
+        },
+      };
+    
+      await submissionCollection.updateOne(submissionFilter, updateSubmission);
+      await userCollection.updateOne(userFilter, updateUser);
+    
+      res.send({ message: 'Submission approved and coins updated' });
+    });
+    // submission reject
+    app.patch('/submission/reject/:id', verifyToken, async (req, res) => {
+      const { id } = req.params;
+    
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status: 'rejected',
+        },
+      };
+    
+      const result = await submissionCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
 
     app.get('/tasks',async(req,res)=>{
       const result=await taskCollection.find().toArray()
@@ -134,13 +174,30 @@ async function run() {
       const result=await taskCollection.findOne(quary)
       res.send(result)
     })
-    app.get('/submission',async(req,res)=>{
-      const result=await submissionCollection.find().toArray();
+
+    // worker
+    app.get('/submission/:email',async(req,res)=>{
+      const email=req.params.email;
+      // if (req.decoded.email !== email) {
+      //   return res.status(403).send({ message: 'unauthorized access' });
+      // }
+      const filter={worker_email:email}
+      const result=await submissionCollection.find(filter).toArray();
       res.send(result)
+    })
+
+    // taskcreator
+    app.get('/submissions/:email',async(req,res)=>{
+      const email=req.params.email;
+      const filter={
+        creator_email:email}
+        const result=await submissionCollection.find(filter).toArray();
+        res.send(result)
     })
 
     app.post('/tasks',async(req,res)=>{
       const quary=req.body;
+      
       const result=await taskCollection.insertOne(quary);
       res.send(result)
     })
@@ -149,6 +206,29 @@ async function run() {
       const result=await submissionCollection.insertOne(query);
       res.send(result)
 
+    })
+
+    // withdrow
+    app.post('/withdraw',verifyToken,async(req,res)=>{
+      const withdrawal=req.body;
+      // const {amount,payment,coin,account} = req.body;
+
+      const email = req.decoded.email;
+
+      // Fetch user data to get current coin balance
+      const user = await userCollection.findOne({ email:email });
+    
+      if (!user) {
+        return res.status(404).send({ message: 'User not found' });
+      }
+      const maxWithdrawAmount = user.coin / 20;
+  if (withdrawal.amount > maxWithdrawAmount) {
+    return res.status(400).send({ message: 'The amount exceeds your maximum withdrawal limit' });
+  }
+ 
+
+      const result=await withdrawCollection.insertOne(withdrawal)
+      res.send(result)
     })
 
 
