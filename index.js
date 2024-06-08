@@ -106,25 +106,54 @@ async function run() {
    
 
 
-    app.get('/users/:email',verifyToken,async(req,res)=>{
-      const email =req.params.email;
-      if(email !== req.decoded.email){
-        return res.status(403).send({message:'unauthorized access'})
-      }
-      const quary={email:email}
-      const user =await userCollection.findOne(quary);
-      let admin=false;
-      let taskcreator=false;
-      let worker=false
+    // app.get('/users/:email',verifyToken,async(req,res)=>{
+    //   const email =req.params.email;
+    //   if(email !== req.decoded.email){
+    //     return res.status(403).send({message:'unauthorized access'})
+    //   }
+    //   const quary={email:email}
+    //   const user =await userCollection.findOne(quary);
+    //   let admin=false;
+    //   let taskcreator=false;
+    //   let worker=false
 
-      if(user){
-          admin=user?.role === 'admin',
-          taskcreator=user?.role === 'taskcreator',
-          worker=user?.role === 'worker'
+    //   if(user){
+    //       admin=user?.role === 'admin',
+    //       taskcreator=user?.role === 'taskcreator',
+    //       worker=user?.role === 'worker'
 
+    //   }
+    //   res.send({admin,taskcreator,worker})
+    // })
+
+    app.get('/user/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+    
+      // Ensure the user is accessing their own information
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: 'unauthorized access' });
       }
-      res.send({admin,taskcreator,worker})
-    })
+    
+      try {
+        const query = { email: email };
+        const user = await userCollection.findOne(query);
+    
+        if (!user) {
+          return res.status(404).send({ message: 'User not found' });
+        }
+    
+        // Check the roles of the user
+        const admin = user.role === 'admin';
+        const taskcreator = user.role === 'taskcreator';
+        const worker = user.role === 'worker';
+    
+        res.send({ admin, taskcreator, worker });
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        res.status(500).send({ message: 'Internal server error' });
+      }
+    });
+    
   // submission approved
     app.patch('/submission/approve/:id', verifyToken, async (req, res) => {
       const { id } = req.params;
@@ -168,9 +197,34 @@ async function run() {
       const result=await taskCollection.find().toArray()
       res.send(result)
     })
+
+
+    app.get('/task/:email',async(req,res)=>{
+      const email=req.params.email;
+      const filter={
+        creator_email:email}
+      const result=await taskCollection.find().toArray()
+      res.send(result)
+
+    })
+
+
     app.get('/tasks/:id',async(req,res)=>{
       const id=req.params.id;
       const quary={_id:new ObjectId(id)}
+      const result=await taskCollection.findOne(quary)
+      res.send(result)
+    })
+    app.patch('/tasks/:id',async(req,res)=>{
+      const id=req.params.id;
+      const {task_title,
+        task_detail,}=req.body;
+      const quary={_id:new ObjectId(id)}
+      const updatedDoc={
+        $set:{
+
+        }
+      }
       const result=await taskCollection.findOne(quary)
       res.send(result)
     })
@@ -225,11 +279,49 @@ async function run() {
   if (withdrawal.amount > maxWithdrawAmount) {
     return res.status(400).send({ message: 'The amount exceeds your maximum withdrawal limit' });
   }
- 
 
-      const result=await withdrawCollection.insertOne(withdrawal)
-      res.send(result)
+  const newCoins=user.coin-withdrawal.withdraw_coin;
+  if(newCoins<0){
+    return res.status(400).send({ message: 'Insufficient coins for withdrawal' });
+  }
+  try {
+    // Update the user's coin balance
+    await userCollection.updateOne(
+        { email: email },
+        { $set: { coin: newCoins} }
+    );
+
+    // Insert the withdrawal record
+    const result = await withdrawCollection.insertOne(withdrawal);
+
+    res.send(result);
+} catch (error) {
+    console.error('Error processing withdrawal:', error);
+    res.status(500).send({ message: 'Internal server error' });
+}
     })
+    app.put('/usersin/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+      const { coin } = req.body;
+    
+      try {
+        const result = await userCollection.updateOne(
+          { email: email },
+          { $set: { coin: coin } }
+        );
+    
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({ message: 'User not found or no change in data' });
+        }
+    
+        res.send(result);
+      } catch (error) {
+        console.error('Error updating user info:', error);
+        res.status(500).send({ message: 'Internal server error' });
+      }
+    });
+    
+   
 
 
     app.patch('/users/admins/:id',verifyToken,verifyAdmin,async(req,res)=>{
