@@ -347,6 +347,17 @@ async function run() {
 }
     })
 
+    // payment get api 
+    app.get('/payment/:email',verifyToken,async(req,res)=>{
+      const email=req.params.email;
+      const filter={email:email}
+      if(req.params.email != req.decoded.email){
+        return res.status(403).send({message:'forbidden access'})
+      }
+      const result=await paymentCollection.find().toArray();
+      res.send(result);
+    })
+
 
     app.post('/create-payment-inten',verifyToken,async(req,res)=>{
       const {price}=req.body;
@@ -364,9 +375,28 @@ async function run() {
   
     // payment post related api
     app.post('/payment',async(req,res)=>{
-      const payment =req.body;
-      const paymentResult=await paymentCollection.insertOne(payment)
-
+      const payment = req.body;
+      const email = payment.email;  // Assuming email is included in the payment data
+  
+      try {
+          // Save the payment details in the paymentCollection
+          const paymentResult = await paymentCollection.insertOne(payment);
+  
+          // Find the TaskCreator by email and update their coin balance
+          const updateResult = await userCollection.updateOne(
+              { email: email },
+              { $inc: { coin: Number(payment.coin_purchase) } }
+          );
+  
+          if (updateResult.modifiedCount > 0) {
+              res.send({ success: true, message: 'Payment and coin balance updated successfully' });
+          } else {
+              res.status(500).send({ success: false, message: 'Failed to update user coin balance' });
+          }
+      } catch (error) {
+          console.error('Error processing payment:', error);
+          res.status(500).send({ success: false, message: 'Internal server error' });
+      }
     })
 
     // app.delete('/taskdelete/:id',verifyToken, async (req, res) => {
