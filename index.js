@@ -1,21 +1,29 @@
-const express =require('express')
-const app =express()
+const express =require('express');
+const app = express();
 const cors= require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config()
-const stripe= require('stripe')(process.env.JWT_SECRET_KEY)
+const stripe= require('stripe')(process.env.STRIPE_SECRET_KEY)
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port=process.env.PORT||5000;
 
 //middlware
-app.use(cors());
+//Must remove "/" from your production URL
+app.use(  cors({
+  origin: [
+    "http://localhost:5173",
+    "https://task-hive-d1851.web.app",
+    "https://task-hive-d1851.firebaseapp.com",
+  ]}))
+
+  
 app.use(express.json());
 
 console.log("JWT_SECRET_KEY:", process.env.JWT_SECRET_KEY);
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qmgfwvr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
+console.log(process.env.DB_USER)
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
@@ -29,11 +37,12 @@ const userCollection = client.db("taskhiveDB").collection("users");
 const taskCollection = client.db("taskhiveDB").collection("tasks");
 const submissionCollection = client.db("taskhiveDB").collection("submission");
 const withdrawCollection = client.db("taskhiveDB").collection("withdrawals");
+const paymentCollection = client.db("taskhiveDB").collection("payments");
 
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     app.post('/jwt', async (req, res) => {
       const user = req.body;
@@ -193,7 +202,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get('/tasks',async(req,res)=>{
+    app.get('/tasks',verifyToken,verifyAdmin,async(req,res)=>{
       const result=await taskCollection.find().toArray()
       res.send(result)
     })
@@ -215,21 +224,29 @@ async function run() {
       const result=await taskCollection.findOne(quary)
       res.send(result)
     })
-    app.patch('/tasks/:id',async(req,res)=>{
+
+    app.patch('/task/:id',verifyToken,async(req,res)=>{
       const id=req.params.id;
       const {task_title,
-        task_detail,}=req.body;
-      const quary={_id:new ObjectId(id)}
+        task_detail,submission_info}=req.body;
+      const filter={_id:new ObjectId(id)}
       const updatedDoc={
         $set:{
+          task_title:task_title,
+          task_detail:task_detail,
+          submission_info:submission_info,
+
 
         }
       }
-      const result=await taskCollection.findOne(quary)
+      const result=await taskCollection.updateOne(filter,updatedDoc)
       res.send(result)
     })
 
     // worker
+     
+    
+
     app.get('/submission/:email',async(req,res)=>{
       const email=req.params.email;
       // if (req.decoded.email !== email) {
@@ -249,12 +266,41 @@ async function run() {
         res.send(result)
     })
 
-    app.post('/tasks',async(req,res)=>{
-      const quary=req.body;
+    // app.post('/tasks',verifyToken,async(req,res)=>{
+    //   const quary=req.body;
       
-      const result=await taskCollection.insertOne(quary);
-      res.send(result)
-    })
+    //   const result=await taskCollection.insertOne(quary);
+    //   res.send(result)
+    // })
+  
+
+    app.post('/tasks', verifyToken, async (req, res) => {
+      const taskInfo = req.body;
+      const totalCost = taskInfo.task_quantity * taskInfo.payable_amount;
+  
+      if (totalCost > req.decoded.coin) {
+          return res.status(400).send({ message: 'Not enough coins. Purchase more coins.' });
+      }
+  
+      try {
+          const response = await taskCollection.insertOne(taskInfo);
+          if (response.insertedId) {
+              // Reduce user's available coins
+              await userCollection.updateOne(
+                  { email: req.decoded.email },
+                  { $inc: { coin: -totalCost } }
+              );
+              res.send({ insertedId: response.insertedId });
+          } else {
+              res.status(500).send({ message: 'Failed to add task.' });
+          }
+      } catch (error) {
+          console.error('Error adding task:', error);
+          res.status(500).send({ message: 'Internal server error.' });
+      }
+  });
+
+
     app.post('/submission',async(req,res)=>{
       const query=req.body;
       const result=await submissionCollection.insertOne(query);
@@ -300,29 +346,89 @@ async function run() {
     res.status(500).send({ message: 'Internal server error' });
 }
     })
-    app.put('/usersin/:email', verifyToken, async (req, res) => {
-      const email = req.params.email;
-      const { coin } = req.body;
+
+
+    app.post('/create-payment-inten',verifyToken,async(req,res)=>{
+      const {price}=req.body;
+      // const amount=parseInt(price * 100);
+      // console.log(amount,'amount inside of paymentintent')
+      const paymentIntent=await stripe.paymentIntents.create({
+        amount:price,
+        currency: "usd",
+        payment_method_types:['card']
+      })
+      res.send({
+        clientSecret:paymentIntent.client_secret
+      })
+    })
+  
+    // payment post related api
+    app.post('/payment',async(req,res)=>{
+      const payment =req.body;
+      const paymentResult=await paymentCollection.insertOne(payment)
+
+    })
+
+    // app.delete('/taskdelete/:id',verifyToken, async (req, res) => {
+    //  const id = req.params.id;
+    //  const query={_id:new ObjectId(id)}
+    //  const result=await taskCollection.deleteOne(query)
+    //  res.send(result)
+    // });
+
+    app.delete('/taskdelete/:id', verifyToken, async (req, res) => {
+      const id = req.params.id;
+      const email = req.decoded.email; // Assuming `verifyToken` sets `req.user`
+      const query = { _id: new ObjectId(id) };
     
       try {
-        const result = await userCollection.updateOne(
-          { email: email },
-          { $set: { coin: coin } }
-        );
+        // Find the task to get task_quantity and payable_amount
+        const task = await taskCollection.findOne(query);
     
-        if (result.modifiedCount === 0) {
-          return res.status(404).send({ message: 'User not found or no change in data' });
+        if (task) {
+          const { task_quantity, payable_amount } = task;
+          console.log(task_quantity,payable_amount)
+          const coinIncrease = task_quantity * payable_amount;
+    
+          // Update user's coin balance
+          const userUpdateResult = await userCollection.updateOne(
+            { email },
+            { $inc: { coins: coinIncrease } }
+          );
+    
+          if (userUpdateResult.modifiedCount > 0) {
+            // Delete the task
+            const deleteResult = await taskCollection.deleteOne(query);
+            res.send(deleteResult);
+          } else {
+            res.status(500).send({ message: 'Failed to update user coins' });
+          }
+        } else {
+          res.status(404).send({ message: 'Task not found' });
         }
-    
-        res.send(result);
       } catch (error) {
-        console.error('Error updating user info:', error);
-        res.status(500).send({ message: 'Internal server error' });
+        console.error('Error deleting task:', error);
+        res.status(500).send({ message: 'An error occurred while deleting the task' });
       }
     });
     
-   
+    
+    
 
+    app.patch('/usersinfo/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+      const  {coin}  = req.body;
+    
+      const filter={email:email}
+      const updatedDoc={
+        $set:{
+          coin:coin
+        }
+      }
+      const result=await userCollection.updateOne(filter,updatedDoc)
+      res.send(result)
+    });
+    
 
     app.patch('/users/admins/:id',verifyToken,verifyAdmin,async(req,res)=>{
       const id=req.params.id;
@@ -344,6 +450,7 @@ async function run() {
       const result=await userCollection.deleteOne(quary);
       res.send(result)
     })
+    
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
