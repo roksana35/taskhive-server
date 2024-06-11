@@ -101,10 +101,26 @@ async function run() {
       res.send(result)
     })
 
+    app.get('/allusers',verifyToken,verifyAdmin,async(req,res)=>{
+      const result=await userCollection.find().toArray()
+      res.send(result)
+    })
     app.get('/users',verifyToken,async(req,res)=>{
       const result=await userCollection.find({role:'worker'}).toArray()
       res.send(result)
     })
+
+    app.get('/totalcoins', async (req, res) => {
+      try {
+        const totalCoins = await userCollection.aggregate([
+          { $group: { _id: null, total: { $sum: "$coin" } } }
+        ]).toArray();
+        const total = totalCoins[0] ? totalCoins[0].total : 0;
+        res.send({ totalCoins: total });
+      } catch (error) {
+        res.status(500).send({ error: 'Error calculating total coins' });
+      }
+    });
     
     app.get('/usersinfo/:email',verifyToken,async(req,res)=>{
       const quary=req.params.email;
@@ -112,6 +128,9 @@ async function run() {
       const result=await userCollection.findOne(filter)
       res.send(result)
     })
+
+
+   
    
 
 
@@ -308,6 +327,11 @@ async function run() {
 
     })
 
+    app.get('/withdraws',async(req,res)=>{
+      const result= await withdrawCollection.find().toArray();
+      res.send(result);
+    })
+
     // withdrow
     app.post('/withdraw',verifyToken,async(req,res)=>{
       const withdrawal=req.body;
@@ -346,6 +370,8 @@ async function run() {
     res.status(500).send({ message: 'Internal server error' });
 }
     })
+
+    
 
     // payment get api 
     app.get('/payment/:email',verifyToken,async(req,res)=>{
@@ -398,6 +424,38 @@ async function run() {
           res.status(500).send({ success: false, message: 'Internal server error' });
       }
     })
+
+
+    app.post('/payment/success', async (req, res) => {
+      try {
+          // Extract withdrawal ID from the request body
+          const { withdrawalId } = req.body;
+  
+          // 1. Delete data from withdrawal collection
+          const deletedWithdrawal = await Withdrawal.findByIdAndDelete(withdrawalId);
+          if (!deletedWithdrawal) {
+              return res.status(404).json({ error: 'Withdrawal not found' });
+          }
+  
+          // 2. Deduct user's coin
+          const user = await User.findById(deletedWithdrawal.userId);
+          if (!user) {
+              return res.status(404).json({ error: 'User not found' });
+          }
+  
+          const currentCoin = user.coin;
+          const withdrawCoin = deletedWithdrawal.withdraw_coin;
+          const updatedCoin = currentCoin - withdrawCoin;
+  
+          // Update user's coin count
+          await User.findByIdAndUpdate(user._id, { coin: updatedCoin });
+  
+          res.status(200).json({ message: 'Payment success. Withdrawal data deleted and user coin deducted.' });
+      } catch (error) {
+          console.error('Error handling payment success:', error);
+          res.status(500).json({ error: 'Internal server error' });
+      }
+  });
 
     // app.delete('/taskdelete/:id',verifyToken, async (req, res) => {
     //  const id = req.params.id;
