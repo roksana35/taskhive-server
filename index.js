@@ -225,6 +225,11 @@ async function run() {
       const result=await taskCollection.find().toArray()
       res.send(result)
     })
+    app.get('/task',verifyToken,async(req,res)=>{
+      const result=await taskCollection.find().toArray()
+      res.send(result)
+    })
+
 
 
     app.get('/task/:email',async(req,res)=>{
@@ -264,7 +269,11 @@ async function run() {
 
     // worker
      
-    
+    app.get('/workersubmission',verifyToken,async(req,res)=>{
+      const result=await submissionCollection.find({
+        status:'approved'}).toArray();
+        res.send(result)
+    })
 
     app.get('/submission/:email',async(req,res)=>{
       const email=req.params.email;
@@ -291,10 +300,58 @@ async function run() {
     //   const result=await taskCollection.insertOne(quary);
     //   res.send(result)
     // })
+
+
+    // get topworker 
+    // Assuming you have initialized your Express app and connected to MongoDB
+
+// Server-side route to fetch top workers with their tasks
+// Server-side route to fetch top workers with their tasks
+// Server-side route to fetch top workers with their tasks
+app.get('/top-workers', async (req, res) => {
+  try {
+      // Fetch workers who have at least one approved task submission
+      const approvedSubmissions = await submissionCollection.aggregate([
+          { $match: { status: 'approved' } },
+          { $group: { _id: "$worker_email", count: { $sum: 1 } } }
+      ]).toArray();
+
+      // Get the emails of workers with approved tasks
+      const workerEmailsWithTasks = approvedSubmissions.map(submission => submission._id);
+
+      // Fetch the top workers who have submitted tasks
+      const topWorkers = await userCollection.find({ email: { $in: workerEmailsWithTasks }, role: 'worker' })
+          .sort({ coin: -1 })
+          .limit(6)
+          .toArray();
+
+      // Create a map of worker email to the number of approved tasks
+      const approvedTasksMap = approvedSubmissions.reduce((acc, submission) => {
+          acc[submission._id] = submission.count;
+          return acc;
+      }, {});
+
+      // Combine worker data with the number of approved tasks
+      const result = topWorkers.map(worker => {
+          const approvedTasks = approvedTasksMap[worker.email] || 0;
+          return { ...worker, approvedTasks };
+      });
+
+      res.json(result);
+  } catch (error) {
+      console.error('Error fetching top workers:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+  
+  
+    
   
 
     app.post('/tasks', verifyToken, async (req, res) => {
       const taskInfo = req.body;
+      taskInfo.filled_quantity = 0;  // Initialize the filled_quantity to 0
       const totalCost = taskInfo.task_quantity * taskInfo.payable_amount;
   
       if (totalCost > req.decoded.coin) {
@@ -318,14 +375,78 @@ async function run() {
           res.status(500).send({ message: 'Internal server error.' });
       }
   });
+// const taskId = query.task_id;
 
+      // Find the task
+      // const task = await taskCollection.findOne({ _id: (taskId) });
+    
+      // if (!task) {
+      //   return res.status(404).send({ message: 'Task not found' });
+      // }
+    
+      // if (task.filled_quantity >= task.task_quantity) {
+      //   return res.status(400).send({ message: 'Submission limit reached' });
+      // }
+    
+      
+        // Insert the submissio
+                // Increment the filled_quantity
+        // await taskCollection.updateOne(
+        //   { _id: (taskId) },
+        //   { $inc: { filled_quantity: 1 } }
+        // );
+    
+        
+      // catch (error) {
+      //   console.error('Error submitting task:', error);
+      //   res.status(500).send({ message: 'Internal server error' });
+      // }
 
-    app.post('/submission',async(req,res)=>{
-      const query=req.body;
-      const result=await submissionCollection.insertOne(query);
-      res.send(result)
+    // app.post('/submission',verifyToken,async(req,res)=>{
+    //   const submissionInfo=req.body;
+    //   console.log({submissionInfo})
+    //     const result = await submissionCollection.insertOne(submissionInfo);
+    //     res.send(result);
 
-    })
+    // })
+
+    app.post('/submission', verifyToken,async (req, res) => {
+      const submissionInfo = req.body;
+      const taskId = submissionInfo.task_id;
+    
+      // Find the task
+      const task = await taskCollection.findOne({ _id:new ObjectId (taskId) });
+      console.log({task})
+    
+      if (!task) {
+        return res.status(404).send({ message: 'Task not found' });
+      }
+    
+      // Initialize filled_quantity if it doesn't exist
+      const filledQuantity = task.filled_quantity || 0;
+      console.log({filledQuantity})
+      const taskQuantity = Number(task.task_quantity);
+    
+      if (filledQuantity >= task.task_quantity) {
+        return res.status(400).send({ message: 'Submission limit reached' });
+      }
+    
+      // Insert the submission
+      const result = await submissionCollection.insertOne(submissionInfo);
+    
+      // Increment the filled_quantity and decrement task_quantity
+   
+     const taskdata= await taskCollection.updateOne(
+        { _id: new ObjectId(taskId) },
+        {
+          $inc: { filled_quantity: 1 },
+          $set: { task_quantity: taskQuantity - 1 }
+        }
+      );
+      console.log('taskdata')
+    
+      res.send(result);
+    });
 
     app.get('/withdraws',async(req,res)=>{
       const result= await withdrawCollection.find().toArray();
@@ -337,41 +458,45 @@ async function run() {
       const withdrawal=req.body;
       // const {amount,payment,coin,account} = req.body;
 
-      const email = req.decoded.email;
+      // const email = req.decoded.email;
+      const result = await withdrawCollection.insertOne(withdrawal);
+
+      res.send(result);
 
       // Fetch user data to get current coin balance
-      const user = await userCollection.findOne({ email:email });
+      // const user = await userCollection.findOne({ email:email });
     
-      if (!user) {
-        return res.status(404).send({ message: 'User not found' });
-      }
-      const maxWithdrawAmount = user.coin / 20;
-  if (withdrawal.amount > maxWithdrawAmount) {
-    return res.status(400).send({ message: 'The amount exceeds your maximum withdrawal limit' });
-  }
+      // if (!user) {
+      //   return res.status(404).send({ message: 'User not found' });
+      // }
+  //     const maxWithdrawAmount = user.coin / 20;
+  // if (withdrawal.amount > maxWithdrawAmount) {
+  //   return res.status(400).send({ message: 'The amount exceeds your maximum withdrawal limit' });
+  // }
 
-  const newCoins=user.coin-withdrawal.withdraw_coin;
-  if(newCoins<0){
-    return res.status(400).send({ message: 'Insufficient coins for withdrawal' });
-  }
-  try {
+  // const newCoins=user.coin-withdrawal.withdraw_coin;
+  // if(newCoins<0){
+  //   return res.status(400).send({ message: 'Insufficient coins for withdrawal' });
+  // }
+  
     // Update the user's coin balance
-    await userCollection.updateOne(
-        { email: email },
-        { $set: { coin: newCoins} }
-    );
+    // await userCollection.updateOne(
+    //     { email: email },
+    //     { $set: { coin: newCoins} }
+    // );
 
     // Insert the withdrawal record
-    const result = await withdrawCollection.insertOne(withdrawal);
-
-    res.send(result);
-} catch (error) {
-    console.error('Error processing withdrawal:', error);
-    res.status(500).send({ message: 'Internal server error' });
-}
+   
+//  catch (error) {
+//     console.error('Error processing withdrawal:', error);
+//     res.status(500).send({ message: 'Internal server error' });
+// }
     })
 
-    
+    app.get('/payments',verifyToken,verifyAdmin,async(req,res)=>{
+      const result=await paymentCollection.find().toArray();
+      res.send(result)
+    })
 
     // payment get api 
     app.get('/payment/:email',verifyToken,async(req,res)=>{
@@ -463,6 +588,61 @@ async function run() {
     //  const result=await taskCollection.deleteOne(query)
     //  res.send(result)
     // });
+
+    app.delete('/withdraw/:id', async (req, res) => {
+      const id = req.params.id;
+      console.log({id})
+  
+     
+          // Find the withdrawal request
+          const withdrawal = await withdrawCollection.findOne({ _id: new ObjectId(id) });
+          console.log({withdrawal});
+         
+  
+          if (!withdrawal) {
+              return res.status(404).send({ message: 'Withdrawal request not found' });
+          }
+  
+          const { worker_email, withdraw_coin } = withdrawal;
+  
+          // Deduct the coins from the user's balance
+          const user = await userCollection.findOne({ email: worker_email });
+         console.log({user})
+          
+  
+          if (!user) {
+              return res.status(404).send({ message: 'User not found' });
+          }
+  
+          const newCoinBalance = user.coin -parseInt( withdraw_coin);
+          console.log({newCoinBalance})
+          if (newCoinBalance < 0) {
+              return res.status(400).send({ message: 'Insufficient coins' });
+          }
+         
+          // Update user's coin balance
+          await userCollection.updateOne(
+              { email: worker_email },
+              { $set: { coin: newCoinBalance } }
+          );
+  
+          // Delete the withdrawal request
+          await withdrawCollection.deleteOne({ _id: new ObjectId(id) });
+  
+          res.send({ message: 'Payment success. Withdrawal data deleted and user coin deducted.' });
+      // catch (error) {
+      //     console.error('Error handling payment success:', error);
+      //     res.status(500).send({ message: 'Internal server error' });
+      // }
+  });
+  
+
+  app.delete('/task/:id',verifyToken,verifyAdmin,async(req,res)=>{
+    const id=req.params.id;
+    const filter={_id:new ObjectId(id)}
+    const result= await taskCollection.deleteOne(filter)
+    res.send(result)
+  })
 
     app.delete('/taskdelete/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
