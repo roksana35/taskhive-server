@@ -181,6 +181,33 @@ async function run() {
         res.status(500).send({ message: 'Internal server error' });
       }
     });
+    // app.get('/usercoin/:email',  async (req, res) => {
+    //   const email = req.params.email;
+    
+    //   // Ensure the user is accessing their own information
+    //   if (email !== req.decoded.email) {
+    //     return res.status(403).send({ message: 'unauthorized access' });
+    //   }
+    
+    //   try {
+    //     const query = { email: email };
+    //     const user = await userCollection.findOne(query);
+    
+    //     if (!user) {
+    //       return res.status(404).send({ message: 'User not found' });
+    //     }
+    
+    //     // Check the roles of the user
+    //     const admin = user.role === 'admin';
+    //     const taskcreator = user.role === 'taskcreator';
+    //     const worker = user.role === 'worker';
+    
+    //     res.send({ admin, taskcreator, worker });
+    //   } catch (error) {
+    //     console.error('Error fetching user data:', error);
+    //     res.status(500).send({ message: 'Internal server error' });
+    //   }
+    // });
     
   // submission approved
     app.patch('/submission/approve/:id', verifyToken, async (req, res) => {
