@@ -58,7 +58,7 @@ async function run() {
       const token=req.headers.authorization.split(' ')[1];
       jwt.verify(token,process.env.JWT_SECRET_KEY,(err,decoded)=>{
         if(err){
-          return res.status(401).send({message:'forbidden access'})
+          return res.status(400).send({message:'Bad Request'})
         }
         req.decoded=decoded;
         next()
@@ -79,6 +79,30 @@ async function run() {
       }
       next();
     }
+
+    // verifyWorker
+const verifyWorker = async (req, res, next) => {
+  const email = req.decoded.email;
+  const query = { email: email };
+  const user = await userCollection.findOne(query);
+  const isWorker = user?.role === 'worker';
+  if (!isWorker) {
+    return res.status(403).send({ message: 'forbidden access' });
+  }
+  next();
+};
+
+// verifyTaskCreator
+const verifyTaskCreator = async (req, res, next) => {
+  const email = req.decoded.email;
+  const query = { email: email };
+  const user = await userCollection.findOne(query);
+  const isTaskCreator = user?.role === 'taskCreator';
+  if (!isTaskCreator) {
+    return res.status(403).send({ message: 'forbidden access' });
+  }
+  next();
+};
 
     app.post('/users',async(req,res)=>{
       const user=req.body;
@@ -296,20 +320,27 @@ async function run() {
 
     // worker
      
-    app.get('/workersubmission',verifyToken,async(req,res)=>{
-      const result=await submissionCollection.find({
-        status:'approved'}).toArray();
+    app.get('/workersubmission/:email',verifyToken,async(req,res)=>{
+      const email=req.params.email;
+      const filter={worker_email:email,status:'approved'}
+      const result=await submissionCollection.find(filter).toArray();
         res.send(result)
     })
 
     app.get('/submission/:email',async(req,res)=>{
       const email=req.params.email;
+      const page=parseInt(req.query.page);
+      const size=parseInt(req.query.size)
+      console.log('pagination quary',page,size)
       // if (req.decoded.email !== email) {
       //   return res.status(403).send({ message: 'unauthorized access' });
       // }
       const filter={worker_email:email}
-      const result=await submissionCollection.find(filter).toArray();
-      res.send(result)
+      const totalSubmissions = await submissionCollection.countDocuments(filter);
+      const result=await submissionCollection.find(filter).skip(page * size)
+      .limit(size)
+      .toArray();
+      res.send({ result, totalSubmissions })
     })
 
     // taskcreator
