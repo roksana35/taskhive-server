@@ -14,7 +14,9 @@ app.use(  cors({
     "http://localhost:5173",
     "https://task-hive-d1851.web.app",
     "https://task-hive-d1851.firebaseapp.com",
-  ]}))
+  ],
+  
+}))
 
   
 app.use(express.json());
@@ -283,11 +285,11 @@ const verifyTaskCreator = async (req, res, next) => {
 
 
 
-    app.get('/task/:email',async(req,res)=>{
+    app.get('/task/:email',verifyToken,async(req,res)=>{
       const email=req.params.email;
       const filter={
         creator_email:email}
-      const result=await taskCollection.find().toArray()
+      const result=await taskCollection.find(filter).toArray()
       res.send(result)
 
     })
@@ -563,7 +565,7 @@ app.get('/top-workers', async (req, res) => {
       if(req.params.email != req.decoded.email){
         return res.status(403).send({message:'forbidden access'})
       }
-      const result=await paymentCollection.find().toArray();
+      const result=await paymentCollection.find(filter).toArray();
       res.send(result);
     })
 
