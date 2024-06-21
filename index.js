@@ -148,8 +148,9 @@ const verifyTaskCreator = async (req, res, next) => {
       }
     });
     
-    app.get('/usersinfo/:email',verifyToken,async(req,res)=>{
-      const quary=req.params.email;
+    app.get('/usersinfo/:email',async(req,res)=>{
+      const quary=req.query.email;
+      console.log('userinfo:',quary)
       const filter={email:quary}
       const result=await userCollection.findOne(filter)
       res.send(result)
@@ -180,8 +181,9 @@ const verifyTaskCreator = async (req, res, next) => {
     //   res.send({admin,taskcreator,worker})
     // })
 
-    app.get('/user/:email', verifyToken, async (req, res) => {
-      const email = req.params.email;
+    app.get('/user/:email',verifyToken, async (req, res) => {
+      const email = req.query.email;
+      console.log("email:",email)
     
       // Ensure the user is accessing their own information
       if (email !== req.decoded.email) {
@@ -761,6 +763,7 @@ app.get('/top-workers', async (req, res) => {
     app.patch('/users/admins/:id',verifyToken,verifyAdmin,async(req,res)=>{
       const id=req.params.id;
       const { role } = req.body;
+      console.log(req.body)
       const filter={_id:new ObjectId(id)}
       const updatedDoc={
         $set:{
